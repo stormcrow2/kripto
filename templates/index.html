@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Kripto Para Analiz Platformu</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <style>
+        .card {
+            margin-bottom: 20px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+        .signal-strong-buy {
+            color: #28a745;
+            font-weight: bold;
+        }
+        .signal-buy {
+            color: #28a745;
+        }
+        .signal-strong-sell {
+            color: #dc3545;
+            font-weight: bold;
+        }
+        .signal-sell {
+            color: #dc3545;
+        }
+        .signal-neutral {
+            color: #6c757d;
+        }
+    </style>
+</head>
+<body>
+    <div class="container mt-5">
+        <h1 class="mb-4">Kripto Para Analiz Platformu</h1>
+        
+        <div class="row">
+            <div class="col-md-4">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">Coin Seçimi</h5>
+                        <select id="coinSelect" class="form-select mb-3">
+                            <option value="BTC">Bitcoin (BTC)</option>
+                            <option value="ETH">Ethereum (ETH)</option>
+                            <option value="BNB">Binance Coin (BNB)</option>
+                            <option value="SOL">Solana (SOL)</option>
+                            <option value="ADA">Cardano (ADA)</option>
+                            <option value="DOT">Polkadot (DOT)</option>
+                        </select>
+                        <button onclick="analyzeToken()" class="btn btn-primary w-100">Analiz Et</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-8">
+                <div id="results" style="display: none;">
+                    <div class="card">
+                        <div class="card-body">
+                            <h5 class="card-title">Fiyat Bilgisi</h5>
+                            <div id="price"></div>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-body">
+                            <h5 class="card-title">İşlem Sinyali</h5>
+                            <div id="signal"></div>
+                            <div id="confidence" class="mt-2"></div>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-body">
+                            <h5 class="card-title">Detaylı Sinyaller</h5>
+                            <div id="detailed_signals"></div>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-body">
+                            <h5 class="card-title">Teknik Göstergeler</h5>
+                            <div id="technical"></div>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-body">
+                            <h5 class="card-title">Destek ve Direnç Seviyeleri</h5>
+                            <div id="levels"></div>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-body">
+                            <h5 class="card-title">Haber Analizi</h5>
+                            <div id="sentiment"></div>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-body">
+                            <h5 class="card-title">Piyasa Yapısı</h5>
+                            <div id="market_structure"></div>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-body">
+                            <h5 class="card-title">Risk Analizi</h5>
+                            <div id="risk_analysis"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="loading" style="display: none;" class="text-center mt-3">
+        <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Yükleniyor...</span>
+        </div>
+        <p class="mt-2">Analiz yapılıyor, lütfen bekleyin...</p>
+    </div>
+
+    <script>
+        function analyzeToken() {
+            const symbol = $('#coinSelect').val();
+            $('#results').hide();
+            $('#loading').show();
+            
+            $.get(`/analyze/${symbol}`, function(data) {
+                try {
+                    if (data.error) {
+                        alert(data.message);
+                        return;
+                    }
+                    
+                    // Fiyat bilgisi
+                    $('#price').html(`
+                        <h4>Güncel Fiyat: $${Number(data.last_price).toFixed(2)}</h4>
+                        <p>24 Saatlik Değişim: <span class="${data.price_change_24h >= 0 ? 'text-success' : 'text-danger'}">
+                            ${Number(data.price_change_24h).toFixed(2)}%</span></p>
+                    `);
+                    
+                    // İşlem sinyali
+                    const signalClass = {
+                        'GÜÇLÜ AL': 'signal-strong-buy',
+                        'AL': 'signal-buy',
+                        'GÜÇLÜ SAT': 'signal-strong-sell',
+                        'SAT': 'signal-sell',
+                        'NÖTR': 'signal-neutral'
+                    };
+                    
+                    $('#signal').html(`
+                        <h3 class="${signalClass[data.trading_signals.position]}">
+                            ${data.trading_signals.position}
+                        </h3>
+                    `);
+                    
+                    // Güven skoru
+                    $('#confidence').html(`
+                        <div class="progress">
+                            <div class="progress-bar" role="progressbar" 
+                                 style="width: ${data.trading_signals.confidence_score}%" 
+                                 aria-valuenow="${data.trading_signals.confidence_score}" 
+                                 aria-valuemin="0" 
+                                 aria-valuemax="100">
+                                Güven Skoru: ${data.trading_signals.confidence_score.toFixed(1)}%
+                            </div>
+                        </div>
+                    `);
+                    
+                    // Detaylı sinyaller
+                    let signalsHtml = '<ul class="list-group">';
+                    data.trading_signals.detailed_signals.forEach(signal => {
+                        signalsHtml += `
+                            <li class="list-group-item">
+                                <span class="${signalClass[signal.signal]}">${signal.signal}</span>: 
+                                ${signal.reason}
+                            </li>
+                        `;
+                    });
+                    signalsHtml += '</ul>';
+                    $('#detailed_signals').html(signalsHtml);
+                    
+                    // Piyasa yapısı
+                    if (data.market_structure && data.market_structure.market_structure) {
+                        const ms = data.market_structure.market_structure;
+                        $('#market_structure').html(`
+                            <ul class="list-group">
+                                <li class="list-group-item">Uzun Vadeli Trend: <strong>${ms.long_term_trend}</strong></li>
+                                <li class="list-group-item">Orta Vadeli Trend: <strong>${ms.medium_term_trend}</strong></li>
+                                <li class="list-group-item">Kısa Vadeli Trend: <strong>${ms.short_term_trend}</strong></li>
+                                <li class="list-group-item">Trend Gücü: <strong>${ms.trend_strength}</strong></li>
+                                <li class="list-group-item">Volatilite: <strong>${ms.volatility_state}</strong></li>
+                                <li class="list-group-item">Hacim Trendi: <strong>${ms.volume_trend}</strong></li>
+                                <li class="list-group-item">Risk Seviyesi: <strong>${ms.risk_level}</strong></li>
+                            </ul>
+                        `);
+                    }
+                    
+                    // Risk analizi
+                    if (data.risk_analysis) {
+                        const ra = data.risk_analysis;
+                        $('#risk_analysis').html(`
+                            <ul class="list-group">
+                                <li class="list-group-item">Stop Loss: <strong>$${Number(ra.stop_loss).toFixed(2)}</strong></li>
+                                <li class="list-group-item">Take Profit: <strong>$${Number(ra.take_profit).toFixed(2)}</strong></li>
+                                <li class="list-group-item">Risk/Ödül Oranı: <strong>${Number(ra.risk_reward_ratio).toFixed(2)}</strong></li>
+                                <li class="list-group-item">Önerilen Pozisyon Büyüklüğü: <strong>${Number(ra.suggested_position_size).toFixed(2)} birim</strong></li>
+                                <li class="list-group-item">Maksimum Kayıp: <strong>$${Number(ra.max_loss_amount).toFixed(2)}</strong></li>
+                            </ul>
+                        `);
+                    }
+                    
+                    // Teknik göstergeler
+                    const lastData = data.technical_data[data.technical_data.length - 1];
+                    $('#technical').html(`
+                        <ul class="list-group">
+                            <li class="list-group-item">RSI: ${Number(lastData.RSI).toFixed(2)}</li>
+                            <li class="list-group-item">MACD: ${Number(lastData.MACD).toFixed(2)}</li>
+                            <li class="list-group-item">MACD Sinyal: ${Number(lastData.MACD_Signal).toFixed(2)}</li>
+                            <li class="list-group-item">SMA(20): ${Number(lastData.SMA_20).toFixed(2)}</li>
+                            <li class="list-group-item">SMA(50): ${Number(lastData.SMA_50).toFixed(2)}</li>
+                            <li class="list-group-item">ATR: ${Number(lastData.ATR).toFixed(2)}</li>
+                            <li class="list-group-item">Volatilite: ${Number(lastData.Volatility).toFixed(2)}%</li>
+                        </ul>
+                    `);
+                    
+                    // Destek ve direnç seviyeleri
+                    $('#levels').html(`
+                        <div class="row">
+                            <div class="col-md-6">
+                                <h6>Direnç Seviyeleri:</h6>
+                                <ul class="list-group">
+                                    ${data.support_resistance.resistance_levels.reverse().map(level => 
+                                        `<li class="list-group-item">$${Number(level).toFixed(2)}</li>`
+                                    ).join('')}
+                                </ul>
+                            </div>
+                            <div class="col-md-6">
+                                <h6>Destek Seviyeleri:</h6>
+                                <ul class="list-group">
+                                    ${data.support_resistance.support_levels.reverse().map(level => 
+                                        `<li class="list-group-item">$${Number(level).toFixed(2)}</li>`
+                                    ).join('')}
+                                </ul>
+                            </div>
+                        </div>
+                    `);
+                    
+                    // Haber analizi
+                    $('#sentiment').html(`
+                        <p>Duyarlılık: <strong>${data.sentiment_analysis.sentiment_label}</strong></p>
+                        <p>Haber Sayısı: ${data.sentiment_analysis.news_count}</p>
+                        <div class="progress mb-3">
+                            <div class="progress-bar ${data.sentiment_analysis.sentiment_score >= 0 ? 'bg-success' : 'bg-danger'}" 
+                                 role="progressbar" 
+                                 style="width: ${Math.abs(data.sentiment_analysis.sentiment_score * 100)}%" 
+                                 aria-valuenow="${data.sentiment_analysis.sentiment_score * 100}" 
+                                 aria-valuemin="0" 
+                                 aria-valuemax="100">
+                            </div>
+                        </div>
+                        ${data.sentiment_analysis.articles ? `
+                            <h6>Son Haberler:</h6>
+                            <ul class="list-group">
+                                ${data.sentiment_analysis.articles.map(article => `
+                                    <li class="list-group-item">
+                                        <a href="${article.url}" target="_blank">${article.title}</a>
+                                        <span class="badge ${article.sentiment > 0 ? 'bg-success' : article.sentiment < 0 ? 'bg-danger' : 'bg-secondary'} float-end">
+                                            ${article.sentiment > 0 ? 'Pozitif' : article.sentiment < 0 ? 'Negatif' : 'Nötr'}
+                                        </span>
+                                    </li>
+                                `).join('')}
+                            </ul>
+                        ` : ''}
+                        ${data.sentiment_analysis.error ? `<div class="alert alert-warning">${data.sentiment_analysis.error}</div>` : ''}
+                    `);
+                    
+                    $('#results').show();
+                } catch (e) {
+                    console.error("Veri işleme hatası:", e);
+                    alert("Veri işlenirken bir hata oluştu");
+                }
+            }).fail(function(jqXHR, textStatus, errorThrown) {
+                console.error("API hatası:", textStatus, errorThrown);
+                alert("Veri alınırken bir hata oluştu");
+            }).always(function() {
+                $('#loading').hide();
+            });
+        }
+    </script>
+</body>
+</html> 
