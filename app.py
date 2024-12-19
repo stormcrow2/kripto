@@ -611,6 +611,196 @@ class AdvancedCryptoAnalyzer:
             print(f"Çoklu zaman dilimi analiz hatası: {str(e)}")
             return None
 
+    def simulate_position(self, symbol, position_type, entry_price, stop_loss, take_profit, position_size, timeframe='5m', periods=100):
+        try:
+            df = self.get_market_data(f"{symbol}/USDT", timeframe=timeframe, limit=periods)
+            if df.empty:
+                return None
+            
+            simulation = {
+                'trades': [],
+                'pnl': 0,
+                'win_rate': 0,
+                'avg_win': 0,
+                'avg_loss': 0,
+                'max_drawdown': 0
+            }
+            
+            in_position = True
+            entry_index = 0
+            
+            for i in range(1, len(df)):
+                if in_position:
+                    current_price = df['close'].iloc[i]
+                    
+                    if position_type == 'LONG':
+                        if current_price <= stop_loss:
+                            pnl = (stop_loss - entry_price) / entry_price * position_size
+                            simulation['trades'].append({
+                                'exit_price': stop_loss,
+                                'exit_time': df['timestamp'].iloc[i],
+                                'pnl': pnl,
+                                'type': 'stop_loss'
+                            })
+                            in_position = False
+                        elif current_price >= take_profit:
+                            pnl = (take_profit - entry_price) / entry_price * position_size
+                            simulation['trades'].append({
+                                'exit_price': take_profit,
+                                'exit_time': df['timestamp'].iloc[i],
+                                'pnl': pnl,
+                                'type': 'take_profit'
+                            })
+                            in_position = False
+                    else:  # SHORT
+                        if current_price >= stop_loss:
+                            pnl = (entry_price - stop_loss) / entry_price * position_size
+                            simulation['trades'].append({
+                                'exit_price': stop_loss,
+                                'exit_time': df['timestamp'].iloc[i],
+                                'pnl': pnl,
+                                'type': 'stop_loss'
+                            })
+                            in_position = False
+                        elif current_price <= take_profit:
+                            pnl = (entry_price - take_profit) / entry_price * position_size
+                            simulation['trades'].append({
+                                'exit_price': take_profit,
+                                'exit_time': df['timestamp'].iloc[i],
+                                'pnl': pnl,
+                                'type': 'take_profit'
+                            })
+                            in_position = False
+            
+            if len(simulation['trades']) > 0:
+                wins = [t for t in simulation['trades'] if t['pnl'] > 0]
+                losses = [t for t in simulation['trades'] if t['pnl'] <= 0]
+                
+                simulation['pnl'] = sum(t['pnl'] for t in simulation['trades'])
+                simulation['win_rate'] = len(wins) / len(simulation['trades']) * 100
+                simulation['avg_win'] = sum(t['pnl'] for t in wins) / len(wins) if wins else 0
+                simulation['avg_loss'] = sum(t['pnl'] for t in losses) / len(losses) if losses else 0
+                
+                # Maksimum drawdown hesaplama
+                cumulative_pnl = np.cumsum([t['pnl'] for t in simulation['trades']])
+                peak = np.maximum.accumulate(cumulative_pnl)
+                drawdown = (peak - cumulative_pnl) / peak * 100
+                simulation['max_drawdown'] = np.max(drawdown)
+            
+            return simulation
+            
+        except Exception as e:
+            print(f"Pozisyon simülasyonu hatası: {str(e)}")
+            return None
+
+    def analyze_historical_performance(self, symbol, timeframe='1d', periods=365):
+        try:
+            df = self.get_market_data(f"{symbol}/USDT", timeframe=timeframe, limit=periods)
+            if df.empty:
+                return None
+            
+            # Temel metrikler
+            returns = df['close'].pct_change()
+            
+            analysis = {
+                'total_return': ((df['close'].iloc[-1] / df['close'].iloc[0]) - 1) * 100,
+                'annual_return': returns.mean() * 252 * 100,
+                'volatility': returns.std() * np.sqrt(252) * 100,
+                'sharpe_ratio': (returns.mean() * 252) / (returns.std() * np.sqrt(252)) if returns.std() != 0 else 0,
+                'max_drawdown': 0,
+                'best_day': returns.max() * 100,
+                'worst_day': returns.min() * 100,
+                'positive_days': (returns > 0).sum() / len(returns) * 100,
+                'monthly_returns': []
+            }
+            
+            # Maksimum drawdown hesaplama
+            peak = df['close'].expanding(min_periods=1).max()
+            drawdown = ((peak - df['close']) / peak * 100)
+            analysis['max_drawdown'] = drawdown.max()
+            
+            # Aylık getiriler
+            df['month'] = pd.to_datetime(df['timestamp']).dt.strftime('%Y-%m')
+            monthly = df.groupby('month')['close'].agg(['first', 'last'])
+            analysis['monthly_returns'] = ((monthly['last'] / monthly['first'] - 1) * 100).to_dict()
+            
+            return analysis
+            
+        except Exception as e:
+            print(f"Geçmiş performans analizi hatası: {str(e)}")
+            return None
+
+    def optimize_portfolio(self, symbols, capital, risk_tolerance='moderate'):
+        try:
+            # Risk tolerans seviyeleri
+            risk_levels = {
+                'conservative': {'max_allocation': 0.2, 'min_symbols': 5},
+                'moderate': {'max_allocation': 0.3, 'min_symbols': 4},
+                'aggressive': {'max_allocation': 0.4, 'min_symbols': 3}
+            }
+            
+            risk_params = risk_levels[risk_tolerance]
+            returns_data = {}
+            volatility_data = {}
+            correlation_matrix = pd.DataFrame()
+            
+            # Her sembol için veri toplama
+            for symbol in symbols:
+                df = self.get_market_data(f"{symbol}/USDT", timeframe='1d', limit=365)
+                if not df.empty:
+                    returns = df['close'].pct_change().dropna()
+                    returns_data[symbol] = returns.mean() * 252
+                    volatility_data[symbol] = returns.std() * np.sqrt(252)
+                    correlation_matrix[symbol] = returns
+            
+            correlation_matrix = correlation_matrix.corr()
+            
+            # Portföy optimizasyonu
+            optimal_weights = {}
+            remaining_capital = capital
+            sorted_symbols = sorted(symbols, key=lambda x: returns_data.get(x, 0) / volatility_data.get(x, float('inf')), reverse=True)
+            
+            for symbol in sorted_symbols:
+                if len(optimal_weights) >= risk_params['min_symbols']:
+                    break
+                
+                max_allocation = min(remaining_capital, capital * risk_params['max_allocation'])
+                optimal_weights[symbol] = max_allocation
+                remaining_capital -= max_allocation
+            
+            # Kalan sermayeyi dağıt
+            if remaining_capital > 0:
+                for symbol in optimal_weights:
+                    optimal_weights[symbol] += remaining_capital / len(optimal_weights)
+            
+            # Portföy metrikleri
+            portfolio_return = sum(optimal_weights[s] * returns_data[s] for s in optimal_weights)
+            portfolio_volatility = np.sqrt(sum(sum(optimal_weights[s1] * optimal_weights[s2] * 
+                                                 correlation_matrix.loc[s1, s2] * 
+                                                 volatility_data[s1] * volatility_data[s2]
+                                                 for s2 in optimal_weights)
+                                             for s1 in optimal_weights))
+            
+            return {
+                'allocations': optimal_weights,
+                'metrics': {
+                    'expected_return': portfolio_return * 100,
+                    'volatility': portfolio_volatility * 100,
+                    'sharpe_ratio': portfolio_return / portfolio_volatility if portfolio_volatility != 0 else 0,
+                    'diversification_score': 1 - max(optimal_weights.values()) / capital
+                },
+                'risk_metrics': {
+                    symbol: {
+                        'volatility': volatility_data[symbol] * 100,
+                        'correlation': correlation_matrix[symbol].mean()
+                    } for symbol in optimal_weights
+                }
+            }
+            
+        except Exception as e:
+            print(f"Portföy optimizasyonu hatası: {str(e)}")
+            return None
+
 @app.route('/')
 def home():
     return render_template('index.html')
@@ -745,6 +935,50 @@ def get_multi_timeframe_analysis(symbol):
         analyzer = AdvancedCryptoAnalyzer()
         analysis = analyzer.multi_timeframe_analysis(symbol)
         return jsonify(analysis)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/simulate-position/<symbol>', methods=['POST'])
+def simulate_position(symbol):
+    try:
+        data = request.json
+        analyzer = AdvancedCryptoAnalyzer()
+        
+        simulation = analyzer.simulate_position(
+            symbol=symbol,
+            position_type=data['position_type'],
+            entry_price=data['entry_price'],
+            stop_loss=data['stop_loss'],
+            take_profit=data['take_profit'],
+            position_size=data['position_size']
+        )
+        
+        return jsonify(simulation)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/historical-performance/<symbol>')
+def get_historical_performance(symbol):
+    try:
+        analyzer = AdvancedCryptoAnalyzer()
+        analysis = analyzer.analyze_historical_performance(symbol)
+        return jsonify(analysis)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/optimize-portfolio', methods=['POST'])
+def optimize_portfolio():
+    try:
+        data = request.json
+        analyzer = AdvancedCryptoAnalyzer()
+        
+        optimization = analyzer.optimize_portfolio(
+            symbols=data['symbols'],
+            capital=data['capital'],
+            risk_tolerance=data.get('risk_tolerance', 'moderate')
+        )
+        
+        return jsonify(optimization)
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 

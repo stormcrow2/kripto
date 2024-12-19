@@ -4,31 +4,282 @@
     <title>Kripto Para Analiz Platformu</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <link href="https://cdn.jsdelivr.net/npm/tradingview-widget@1.0.1/dist/tradingview-widget.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/tradingview-widget@1.0.1/dist/tradingview-widget.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/moment"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-moment"></script>
     <style>
+        :root {
+            --primary-color: #2962ff;
+            --secondary-color: #82b1ff;
+            --success-color: #00c853;
+            --danger-color: #ff1744;
+            --background-color: #f5f5f5;
+            --card-background: #ffffff;
+        }
+
+        body {
+            background-color: var(--background-color);
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
         .card {
+            border: none;
+            border-radius: 15px;
+            background: var(--card-background);
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            transition: transform 0.2s;
+        }
+
+        .card:hover {
+            transform: translateY(-5px);
+        }
+
+        .card-title {
+            color: var(--primary-color);
+            font-weight: 600;
+            border-bottom: 2px solid var(--secondary-color);
+            padding-bottom: 10px;
+        }
+
+        .btn-primary {
+            background-color: var(--primary-color);
+            border: none;
+            border-radius: 25px;
+            padding: 10px 25px;
+            font-weight: 600;
+            transition: all 0.3s;
+        }
+
+        .btn-primary:hover {
+            background-color: var(--secondary-color);
+            transform: scale(1.05);
+        }
+
+        .form-select {
+            border-radius: 25px;
+            padding: 10px 15px;
+            border: 2px solid var(--secondary-color);
+        }
+
+        .progress {
+            height: 10px;
+            border-radius: 5px;
+        }
+
+        .list-group-item {
+            border: none;
+            border-radius: 10px;
+            margin-bottom: 5px;
+            background-color: rgba(0, 0, 0, 0.02);
+        }
+
+        #chart-container {
+            height: 400px;
             margin-bottom: 20px;
-            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
         }
-        .signal-strong-buy {
-            color: #28a745;
-            font-weight: bold;
+
+        .signal-badge {
+            padding: 5px 15px;
+            border-radius: 15px;
+            font-weight: 600;
         }
-        .signal-buy {
-            color: #28a745;
+
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(255, 255, 255, 0.9);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
         }
-        .signal-strong-sell {
-            color: #dc3545;
-            font-weight: bold;
+
+        .loading-spinner {
+            width: 50px;
+            height: 50px;
+            border: 5px solid var(--secondary-color);
+            border-top: 5px solid var(--primary-color);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
         }
-        .signal-sell {
-            color: #dc3545;
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
         }
-        .signal-neutral {
-            color: #6c757d;
+
+        [data-theme="dark"] {
+            --background-color: #1a1a1a;
+            --card-background: #2d2d2d;
+            --text-color: #ffffff;
+            --border-color: #404040;
+        }
+
+        [data-theme="dark"] .card {
+            background: var(--card-background);
+            color: var(--text-color);
+        }
+
+        [data-theme="dark"] .list-group-item {
+            background-color: rgba(255, 255, 255, 0.05);
+            color: var(--text-color);
+        }
+
+        .theme-switch {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 1000;
+        }
+
+        .interval-selector {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+
+        .interval-btn {
+            padding: 5px 15px;
+            border-radius: 15px;
+            border: 1px solid var(--primary-color);
+            background: transparent;
+            color: var(--primary-color);
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .interval-btn.active {
+            background: var(--primary-color);
+            color: white;
+        }
+
+        .indicator-switch {
+            margin: 10px 0;
+        }
+
+        .timeframe-grid {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .timeframe-card {
+            background: rgba(0,0,0,0.02);
+            border-radius: 10px;
+            padding: 10px;
+            min-height: 120px;
+        }
+
+        .trend-indicator {
+            padding: 4px 8px;
+            border-radius: 15px;
+            font-size: 0.8rem;
+            font-weight: 600;
+        }
+
+        .trend-up {
+            background: var(--success-color);
+            color: white;
+        }
+
+        .trend-down {
+            background: var(--danger-color);
+            color: white;
+        }
+
+        .trend-neutral {
+            background: var(--secondary-color);
+            color: white;
+        }
+
+        .position-level {
+            border-left: 3px solid;
+            padding-left: 10px;
+            margin: 5px 0;
+        }
+
+        .tp-level {
+            border-color: var(--success-color);
+        }
+
+        .sl-level {
+            border-color: var(--danger-color);
+        }
+
+        .portfolio-position {
+            background: rgba(0,0,0,0.02);
+            border-radius: 10px;
+            padding: 15px;
+            margin-bottom: 10px;
+        }
+
+        .risk-meter {
+            height: 8px;
+            border-radius: 4px;
+            background: linear-gradient(to right, var(--success-color), var(--danger-color));
+            margin: 5px 0;
+        }
+
+        .risk-indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: white;
+            border: 2px solid var(--primary-color);
+            position: relative;
+            left: var(--position);
+            top: -10px;
+            transition: left 0.3s ease;
+        }
+
+        .allocation-bar {
+            margin: 10px 0;
+        }
+
+        .allocation-bar .symbol {
+            font-weight: 600;
+            margin-bottom: 5px;
+        }
+
+        .risk-meter-container {
+            padding: 20px;
+            background: rgba(0,0,0,0.02);
+            border-radius: 10px;
+        }
+
+        .risk-labels {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 5px;
+            font-size: 0.8rem;
+            color: var(--text-color);
+        }
+
+        .simulation-summary .list-group-item {
+            margin-bottom: 5px;
+        }
+
+        .performance-metrics .card {
+            margin-bottom: 15px;
+        }
+
+        .optimization-summary .allocation-chart {
+            margin-top: 15px;
         }
     </style>
 </head>
 <body>
+    <div class="theme-switch">
+        <button class="btn btn-outline-primary" onclick="toggleTheme()">
+            <i class="fas fa-moon"></i> Tema Değiştir
+        </button>
+    </div>
+
     <div class="container mt-5">
         <h1 class="mb-4">Kripto Para Analiz Platformu</h1>
         
@@ -51,6 +302,42 @@
             </div>
 
             <div class="col-md-8">
+                <div class="card mb-4">
+                    <div class="card-body">
+                        <h5 class="card-title">Canlı Grafik</h5>
+                        <div class="interval-selector">
+                            <button class="interval-btn active" data-interval="1m">1d</button>
+                            <button class="interval-btn" data-interval="5m">5d</button>
+                            <button class="interval-btn" data-interval="15m">15d</button>
+                            <button class="interval-btn" data-interval="1h">1s</button>
+                            <button class="interval-btn" data-interval="4h">4s</button>
+                            <button class="interval-btn" data-interval="1d">1g</button>
+                        </div>
+                        <div class="indicator-switch">
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input" type="checkbox" id="showMA7" checked>
+                                <label class="form-check-label" for="showMA7">7 MA</label>
+                            </div>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input" type="checkbox" id="showMA25" checked>
+                                <label class="form-check-label" for="showMA25">25 MA</label>
+                            </div>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input" type="checkbox" id="showMA99">
+                                <label class="form-check-label" for="showMA99">99 MA</label>
+                            </div>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input" type="checkbox" id="showRSI">
+                                <label class="form-check-label" for="showRSI">RSI</label>
+                            </div>
+                        </div>
+                        <div id="chart-container">
+                            <canvas id="priceChart"></canvas>
+                            <canvas id="rsiChart" style="display: none;"></canvas>
+                        </div>
+                    </div>
+                </div>
+
                 <div id="results" style="display: none;">
                     <div class="card">
                         <div class="card-body">
@@ -108,6 +395,13 @@
                             <div id="risk_analysis"></div>
                         </div>
                     </div>
+
+                    <div class="card">
+                        <div class="card-body">
+                            <h5 class="card-title">Long/Short Analizi</h5>
+                            <div id="long_short_analysis"></div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -121,10 +415,80 @@
     </div>
 
     <script>
+        let priceChart;
+        let eventSource;
+        let currentInterval = '1m';
+        let rsiChart;
+
+        function initChart() {
+            if (!priceChart) {
+                const ctx = document.getElementById('priceChart').getContext('2d');
+                priceChart = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        datasets: [{
+                            label: 'Fiyat',
+                            borderColor: '#2962ff',
+                            borderWidth: 2,
+                            pointRadius: 0,
+                            data: []
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            x: {
+                                type: 'time',
+                                time: {
+                                    unit: 'minute'
+                                }
+                            },
+                            y: {
+                                beginAtZero: false
+                            }
+                        }
+                    }
+                });
+            }
+            
+            if (!rsiChart) {
+                initRSIChart();
+            }
+        }
+
+        function startRealtimeData(symbol) {
+            if (eventSource) {
+                eventSource.close();
+            }
+
+            eventSource = new EventSource(`/realtime-data/${symbol}`);
+            eventSource.onmessage = function(event) {
+                const data = JSON.parse(event.data);
+                updateChart(data);
+            };
+        }
+
+        function updateChart(data) {
+            const chartData = data.map(candle => ({
+                x: candle.time,
+                y: candle.close
+            }));
+
+            priceChart.data.datasets[0].data = chartData;
+            priceChart.update();
+        }
+
         function analyzeToken() {
             const symbol = $('#coinSelect').val();
             $('#results').hide();
             $('#loading').show();
+            
+            // Grafik başlatma
+            if (!priceChart) {
+                initChart();
+            }
+            startRealtimeData(symbol);
             
             $.get(`/analyze/${symbol}`, function(data) {
                 try {
@@ -276,6 +640,88 @@
                         ${data.sentiment_analysis.error ? `<div class="alert alert-warning">${data.sentiment_analysis.error}</div>` : ''}
                     `);
                     
+                    // Long/Short analizi
+                    if (data.long_short_analysis) {
+                        const lsa = data.long_short_analysis;
+                        const positionClass = {
+                            'LONG': 'text-success',
+                            'SHORT': 'text-danger',
+                            'NÖTR': 'text-warning'
+                        };
+                        
+                        $('#long_short_analysis').html(`
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <h4 class="${positionClass[lsa.position]}">
+                                        ${lsa.position} POZİSYON
+                                    </h4>
+                                    <div class="progress mb-3">
+                                        <div class="progress-bar ${lsa.position === 'LONG' ? 'bg-success' : lsa.position === 'SHORT' ? 'bg-danger' : 'bg-warning'}" 
+                                             role="progressbar" 
+                                             style="width: ${lsa.confidence}%" 
+                                             aria-valuenow="${lsa.confidence}" 
+                                             aria-valuemin="0" 
+                                             aria-valuemax="100">
+                                            Güven: ${lsa.confidence.toFixed(1)}%
+                                        </div>
+                                    </div>
+                                    <ul class="list-group">
+                                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                                            Risk/Ödül Oranı
+                                            <span class="badge bg-primary rounded-pill">${lsa.risk_reward_ratio.toFixed(2)}</span>
+                                        </li>
+                                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                                            Potansiyel Kazanç
+                                            <span class="badge bg-success rounded-pill">${lsa.potential_profit.toFixed(2)}%</span>
+                                        </li>
+                                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                                            Potansiyel Kayıp
+                                            <span class="badge bg-danger rounded-pill">${lsa.potential_loss.toFixed(2)}%</span>
+                                        </li>
+                                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                                            Önerilen Kaldıraç
+                                            <span class="badge bg-warning rounded-pill">${lsa.suggested_leverage.toFixed(1)}x</span>
+                                        </li>
+                                    </ul>
+                                </div>
+                                <div class="col-md-6">
+                                    <h5>Pozisyon Seviyeleri</h5>
+                                    <ul class="list-group">
+                                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                                            Stop Loss
+                                            <span class="badge bg-danger rounded-pill">$${lsa.stop_loss.toFixed(2)}</span>
+                                        </li>
+                                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                                            Take Profit
+                                            <span class="badge bg-success rounded-pill">$${lsa.take_profit.toFixed(2)}</span>
+                                        </li>
+                                    </ul>
+                                    <h5 class="mt-3">Önerilen Pozisyon Büyüklüğü</h5>
+                                    <ul class="list-group">
+                                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                                            Konservatif
+                                            <span class="badge bg-info rounded-pill">%${(lsa.position_size.conservative * 100).toFixed(0)}</span>
+                                        </li>
+                                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                                            Orta
+                                            <span class="badge bg-primary rounded-pill">%${(lsa.position_size.moderate * 100).toFixed(0)}</span>
+                                        </li>
+                                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                                            Agresif
+                                            <span class="badge bg-warning rounded-pill">%${(lsa.position_size.aggressive * 100).toFixed(0)}</span>
+                                        </li>
+                                    </ul>
+                                </div>
+                            </div>
+                        `);
+                    }
+                    
+                    // Çoklu zaman dilimi analizini güncelle
+                    updateMultiTimeframeAnalysis();
+                    
+                    // Geçmiş performans analizini güncelle
+                    updateHistoricalPerformance();
+                    
                     $('#results').show();
                 } catch (e) {
                     console.error("Veri işleme hatası:", e);
@@ -288,6 +734,678 @@
                 $('#loading').hide();
             });
         }
+
+        function toggleTheme() {
+            const body = document.body;
+            if (body.getAttribute('data-theme') === 'dark') {
+                body.removeAttribute('data-theme');
+            } else {
+                body.setAttribute('data-theme', 'dark');
+            }
+            updateChartTheme();
+        }
+
+        function updateChartTheme() {
+            const isDark = document.body.getAttribute('data-theme') === 'dark';
+            const textColor = isDark ? '#ffffff' : '#666666';
+            
+            if (priceChart) {
+                priceChart.options.scales.x.grid.color = isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)';
+                priceChart.options.scales.y.grid.color = isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)';
+                priceChart.options.scales.x.ticks.color = textColor;
+                priceChart.options.scales.y.ticks.color = textColor;
+                priceChart.update();
+            }
+            
+            if (rsiChart) {
+                rsiChart.options.scales.x.grid.color = isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)';
+                rsiChart.options.scales.y.grid.color = isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)';
+                rsiChart.options.scales.x.ticks.color = textColor;
+                rsiChart.options.scales.y.ticks.color = textColor;
+                rsiChart.update();
+            }
+        }
+
+        function initRSIChart() {
+            const ctx = document.getElementById('rsiChart').getContext('2d');
+            rsiChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    datasets: [{
+                        label: 'RSI',
+                        borderColor: '#ff6384',
+                        borderWidth: 2,
+                        pointRadius: 0,
+                        data: []
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: {
+                            type: 'time',
+                            time: {
+                                unit: 'minute'
+                            }
+                        },
+                        y: {
+                            min: 0,
+                            max: 100,
+                            grid: {
+                                color: 'rgba(0,0,0,0.1)'
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        function updateCharts(data) {
+            const chartData = {
+                price: [],
+                ma7: [],
+                ma25: [],
+                ma99: [],
+                rsi: []
+            };
+
+            data.forEach(candle => {
+                const time = candle.time;
+                chartData.price.push({x: time, y: candle.close});
+                if (candle.MA7) chartData.ma7.push({x: time, y: candle.MA7});
+                if (candle.MA25) chartData.ma25.push({x: time, y: candle.MA25});
+                if (candle.MA99) chartData.ma99.push({x: time, y: candle.MA99});
+                if (candle.RSI) chartData.rsi.push({x: time, y: candle.RSI});
+            });
+
+            // Ana grafik güncelleme
+            priceChart.data.datasets = [{
+                label: 'Fiyat',
+                borderColor: '#2962ff',
+                borderWidth: 2,
+                pointRadius: 0,
+                data: chartData.price
+            }];
+
+            if ($('#showMA7').is(':checked')) {
+                priceChart.data.datasets.push({
+                    label: '7 MA',
+                    borderColor: '#00c853',
+                    borderWidth: 1,
+                    pointRadius: 0,
+                    data: chartData.ma7
+                });
+            }
+
+            if ($('#showMA25').is(':checked')) {
+                priceChart.data.datasets.push({
+                    label: '25 MA',
+                    borderColor: '#ff6d00',
+                    borderWidth: 1,
+                    pointRadius: 0,
+                    data: chartData.ma25
+                });
+            }
+
+            if ($('#showMA99').is(':checked')) {
+                priceChart.data.datasets.push({
+                    label: '99 MA',
+                    borderColor: '#d500f9',
+                    borderWidth: 1,
+                    pointRadius: 0,
+                    data: chartData.ma99
+                });
+            }
+
+            priceChart.update();
+
+            // RSI grafik güncelleme
+            if ($('#showRSI').is(':checked')) {
+                $('#rsiChart').show();
+                rsiChart.data.datasets[0].data = chartData.rsi;
+                rsiChart.update();
+            } else {
+                $('#rsiChart').hide();
+            }
+        }
+
+        // Event listeners
+        $('.interval-btn').click(function() {
+            $('.interval-btn').removeClass('active');
+            $(this).addClass('active');
+            currentInterval = $(this).data('interval');
+            startRealtimeData($('#coinSelect').val());
+        });
+
+        $('.form-check-input').change(function() {
+            const symbol = $('#coinSelect').val();
+            $.get(`/technical-data/${symbol}/${currentInterval}`, function(data) {
+                updateCharts(data);
+            });
+        });
+
+        let portfolioPositions = [];
+
+        function updateMultiTimeframeAnalysis() {
+            const symbol = $('#coinSelect').val();
+            $.get(`/multi-timeframe/${symbol}`, function(data) {
+                if (data.error) {
+                    console.error(data.error);
+                    return;
+                }
+
+                // Her zaman dilimi için analiz gösterimi
+                Object.entries(data.timeframe_analyses).forEach(([tf, analysis], index) => {
+                    $(`#tf_analysis_${index}`).html(`
+                        <div class="trend-indicator ${analysis.ema_trend === 'YÜKSELEN' ? 'trend-up' : 'trend-down'}">
+                            ${analysis.ema_trend}
+                        </div>
+                        <small class="d-block mt-2">RSI: ${analysis.rsi_state}</small>
+                        <small class="d-block">MACD: ${analysis.macd_trend}</small>
+                    `);
+                });
+
+                // Genel trend gösterimi
+                $('#overall_trend').html(`
+                    <div class="alert ${data.overall_trend.includes('GÜÇLÜ') ? 'alert-success' : 
+                                      data.overall_trend.includes('ZAYIF') ? 'alert-warning' : 
+                                      'alert-secondary'}">
+                        <h4 class="alert-heading">${data.overall_trend}</h4>
+                        <div class="progress mt-2">
+                            <div class="progress-bar" role="progressbar" 
+                                 style="width: ${data.trend_strength}%" 
+                                 aria-valuenow="${data.trend_strength}" 
+                                 aria-valuemin="0" 
+                                 aria-valuemax="100">
+                                Trend Gücü: ${data.trend_strength.toFixed(1)}%
+                            </div>
+                        </div>
+                    </div>
+                `);
+            });
+        }
+
+        function calculatePosition() {
+            const symbol = $('#coinSelect').val();
+            const capital = $('#capital').val();
+            const riskPercentage = $('#risk_percentage').val();
+
+            $.get(`/position-management/${symbol}`, function(data) {
+                if (data.error) {
+                    console.error(data.error);
+                    return;
+                }
+
+                $('#position_management_results').html(`
+                    <div class="position-details mt-3">
+                        <h6>Pozisyon Büyüklüğü</h6>
+                        <div class="position-level">
+                            Önerilen: $${data.position_size.toFixed(2)}
+                            <br>
+                            Maksimum: $${data.max_position_size.toFixed(2)}
+                        </div>
+
+                        <h6 class="mt-3">Kar Alma Seviyeleri</h6>
+                        ${data.take_profit_levels.map((level, index) => `
+                            <div class="position-level tp-level">
+                                TP${index + 1}: $${level.toFixed(2)}
+                                <small class="text-muted d-block">
+                                    Pozisyon: %${(data.suggested_exits.conservative[`tp${index + 1}_size`] * 100).toFixed(0)}
+                                </small>
+                            </div>
+                        `).join('')}
+
+                        <h6 class="mt-3">Trailing Stop Seviyeleri</h6>
+                        ${data.trailing_stops.map((level, index) => `
+                            <div class="position-level sl-level">
+                                TS${index + 1}: $${level.toFixed(2)}
+                            </div>
+                        `).join('')}
+                    </div>
+                `);
+            });
+        }
+
+        function addPortfolioPosition() {
+            const positionHtml = `
+                <div class="portfolio-position" id="position_${portfolioPositions.length}">
+                    <div class="row">
+                        <div class="col-md-3">
+                            <select class="form-select position-symbol">
+                                <option value="BTC">Bitcoin (BTC)</option>
+                                <option value="ETH">Ethereum (ETH)</option>
+                                <option value="BNB">Binance Coin (BNB)</option>
+                                <option value="SOL">Solana (SOL)</option>
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <input type="number" class="form-control position-size" placeholder="Miktar">
+                        </div>
+                        <div class="col-md-3">
+                            <input type="number" class="form-control position-entry" placeholder="Giriş Fiyatı">
+                        </div>
+                        <div class="col-md-3">
+                            <button class="btn btn-danger btn-sm" onclick="removePosition(${portfolioPositions.length})">
+                                Kaldır
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            $('#portfolio_positions').append(positionHtml);
+            portfolioPositions.push({});
+        }
+
+        function removePosition(index) {
+            $(`#position_${index}`).remove();
+            portfolioPositions.splice(index, 1);
+        }
+
+        function analyzePortfolio() {
+            const positions = [];
+            $('.portfolio-position').each(function(index) {
+                positions.push({
+                    symbol: $(this).find('.position-symbol').val(),
+                    size: parseFloat($(this).find('.position-size').val()),
+                    entry_price: parseFloat($(this).find('.position-entry').val())
+                });
+            });
+
+            $.ajax({
+                url: '/portfolio-analysis',
+                type: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({ positions: positions }),
+                success: function(data) {
+                    if (data.error) {
+                        console.error(data.error);
+                        return;
+                    }
+
+                    $('#portfolio_analysis_results').html(`
+                        <div class="risk-analysis mt-3">
+                            <h6>Portföy Risk Analizi</h6>
+                            <div class="risk-meter">
+                                <div class="risk-indicator" style="--position: ${data.portfolio_diversification_score * 100}%"></div>
+                            </div>
+                            <p class="text-center">Çeşitlendirme Skoru: ${(data.portfolio_diversification_score * 100).toFixed(1)}%</p>
+
+                            <h6 class="mt-3">Risk Dağılımı</h6>
+                            <div class="risk-distribution">
+                                ${Object.entries(data.risk_concentration).map(([symbol, risk]) => `
+                                    <div class="position-level ${risk > 20 ? 'sl-level' : 'tp-level'}">
+                                        ${symbol}: %${risk.toFixed(1)}
+                                        <small class="text-muted d-block">
+                                            Öneri: ${data.suggested_adjustments[symbol]}
+                                        </small>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>
+                    `);
+                }
+            });
+        }
+
+        function simulatePosition() {
+            const symbol = $('#coinSelect').val();
+            const data = {
+                position_type: $('#sim_position_type').val(),
+                position_size: parseFloat($('#sim_position_size').val()),
+                stop_loss: parseFloat($('#sim_stop_loss').val()),
+                take_profit: parseFloat($('#sim_take_profit').val()),
+                entry_price: parseFloat($('#calc_entry_price').val())
+            };
+
+            $.ajax({
+                url: `/simulate-position/${symbol}`,
+                type: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify(data),
+                success: function(result) {
+                    $('#simulation_results').html(`
+                        <div class="simulation-summary mt-4">
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <h6>Performans Özeti</h6>
+                                    <ul class="list-group">
+                                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                                            Toplam PNL
+                                            <span class="badge ${result.pnl >= 0 ? 'bg-success' : 'bg-danger'} rounded-pill">
+                                                $${result.pnl.toFixed(2)}
+                                            </span>
+                                        </li>
+                                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                                            Kazanma Oranı
+                                            <span class="badge bg-primary rounded-pill">
+                                                ${result.win_rate.toFixed(1)}%
+                                            </span>
+                                        </li>
+                                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                                            Maksimum Drawdown
+                                            <span class="badge bg-warning rounded-pill">
+                                                ${result.max_drawdown.toFixed(2)}%
+                                            </span>
+                                        </li>
+                                    </ul>
+                                </div>
+                                <div class="col-md-6">
+                                    <h6>İşlem Detayları</h6>
+                                    <ul class="list-group">
+                                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                                            Ortalama Kazanç
+                                            <span class="badge bg-success rounded-pill">
+                                                $${result.avg_win.toFixed(2)}
+                                            </span>
+                                        </li>
+                                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                                            Ortalama Kayıp
+                                            <span class="badge bg-danger rounded-pill">
+                                                $${result.avg_loss.toFixed(2)}
+                                            </span>
+                                        </li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+                    `);
+                }
+            });
+        }
+
+        function updateHistoricalPerformance() {
+            const symbol = $('#coinSelect').val();
+            $.get(`/historical-performance/${symbol}`, function(data) {
+                const monthlyReturnsCtx = document.getElementById('monthlyReturnsChart').getContext('2d');
+                
+                // Aylık getiriler grafiği
+                new Chart(monthlyReturnsCtx, {
+                    type: 'bar',
+                    data: {
+                        labels: Object.keys(data.monthly_returns),
+                        datasets: [{
+                            label: 'Aylık Getiri (%)',
+                            data: Object.values(data.monthly_returns),
+                            backgroundColor: Object.values(data.monthly_returns).map(value => 
+                                value >= 0 ? 'rgba(75, 192, 192, 0.2)' : 'rgba(255, 99, 132, 0.2)'
+                            ),
+                            borderColor: Object.values(data.monthly_returns).map(value => 
+                                value >= 0 ? 'rgb(75, 192, 192)' : 'rgb(255, 99, 132)'
+                            ),
+                            borderWidth: 1
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        scales: {
+                            y: {
+                                beginAtZero: true
+                            }
+                        }
+                    }
+                });
+
+                $('.performance-metrics').html(`
+                    <div class="card">
+                        <div class="card-body">
+                            <h6>Temel Metrikler</h6>
+                            <ul class="list-group">
+                                <li class="list-group-item d-flex justify-content-between align-items-center">
+                                    Toplam Getiri
+                                    <span class="badge ${data.total_return >= 0 ? 'bg-success' : 'bg-danger'} rounded-pill">
+                                        ${data.total_return.toFixed(2)}%
+                                    </span>
+                                </li>
+                                <li class="list-group-item d-flex justify-content-between align-items-center">
+                                    Yıllık Getiri
+                                    <span class="badge ${data.annual_return >= 0 ? 'bg-success' : 'bg-danger'} rounded-pill">
+                                        ${data.annual_return.toFixed(2)}%
+                                    </span>
+                                </li>
+                                <li class="list-group-item d-flex justify-content-between align-items-center">
+                                    Volatilite
+                                    <span class="badge bg-warning rounded-pill">
+                                        ${data.volatility.toFixed(2)}%
+                                    </span>
+                                </li>
+                                <li class="list-group-item d-flex justify-content-between align-items-center">
+                                    Sharpe Oranı
+                                    <span class="badge bg-info rounded-pill">
+                                        ${data.sharpe_ratio.toFixed(2)}
+                                    </span>
+                                </li>
+                            </ul>
+                        </div>
+                    </div>
+                `);
+            });
+        }
+
+        function optimizePortfolio() {
+            const data = {
+                symbols: ['BTC', 'ETH', 'BNB', 'SOL', 'ADA', 'DOT'],
+                capital: parseFloat($('#portfolio_capital').val()),
+                risk_tolerance: $('#risk_tolerance').val()
+            };
+
+            $.ajax({
+                url: '/optimize-portfolio',
+                type: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify(data),
+                success: function(result) {
+                    $('#portfolio_optimization_results').html(`
+                        <div class="optimization-summary mt-4">
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <h6>Portföy Dağılımı</h6>
+                                    <div class="allocation-chart">
+                                        ${Object.entries(result.allocations).map(([symbol, amount]) => `
+                                            <div class="allocation-bar">
+                                                <div class="symbol">${symbol}</div>
+                                                <div class="progress">
+                                                    <div class="progress-bar" role="progressbar" 
+                                                         style="width: ${(amount / data.capital * 100)}%">
+                                                        $${amount.toFixed(2)}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        `).join('')}
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <h6>Portföy Metrikleri</h6>
+                                    <ul class="list-group">
+                                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                                            Beklenen Getiri
+                                            <span class="badge bg-success rounded-pill">
+                                                ${result.metrics.expected_return.toFixed(2)}%
+                                            </span>
+                                        </li>
+                                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                                            Volatilite
+                                            <span class="badge bg-warning rounded-pill">
+                                                ${result.metrics.volatility.toFixed(2)}%
+                                            </span>
+                                        </li>
+                                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                                            Sharpe Oranı
+                                            <span class="badge bg-info rounded-pill">
+                                                ${result.metrics.sharpe_ratio.toFixed(2)}
+                                            </span>
+                                        </li>
+                                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                                            Çeşitlendirme Skoru
+                                            <span class="badge bg-primary rounded-pill">
+                                                ${(result.metrics.diversification_score * 100).toFixed(1)}%
+                                            </span>
+                                        </li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+                    `);
+                }
+            });
+        }
+
+        // Risk/Ödül hesaplayıcı için event listener'lar
+        $('#calc_entry_price, #calc_stop_loss, #calc_take_profit').on('input', calculateRiskReward);
+
+        function calculateRiskReward() {
+            const entryPrice = parseFloat($('#calc_entry_price').val());
+            const stopLoss = parseFloat($('#calc_stop_loss').val());
+            const takeProfit = parseFloat($('#calc_take_profit').val());
+            
+            if (entryPrice && stopLoss && takeProfit) {
+                const risk = Math.abs(entryPrice - stopLoss);
+                const reward = Math.abs(takeProfit - entryPrice);
+                const ratio = reward / risk;
+                
+                const riskPercent = (risk / entryPrice) * 100;
+                const rewardPercent = (reward / entryPrice) * 100;
+                
+                $('#risk_reward_ratio').html(`
+                    <h4>Risk/Ödül Oranı: ${ratio.toFixed(2)}</h4>
+                `);
+                
+                $('#potential_profit').html(`
+                    <div class="alert alert-success">
+                        Potansiyel Kazanç: ${rewardPercent.toFixed(2)}%
+                    </div>
+                `);
+                
+                $('#potential_loss').html(`
+                    <div class="alert alert-danger">
+                        Potansiyel Kayıp: ${riskPercent.toFixed(2)}%
+                    </div>
+                `);
+                
+                // Risk göstergesini güncelle
+                $('.risk-indicator').css('left', `${(ratio / (ratio + 1)) * 100}%`);
+            }
+        }
     </script>
+
+    <!-- Mevcut kartlardan sonra eklenecek yeni kartlar -->
+
+    <!-- Pozisyon Simülasyonu Kartı -->
+    <div class="card">
+        <div class="card-body">
+            <h5 class="card-title">Pozisyon Simülasyonu</h5>
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="form-group mb-3">
+                        <label>Pozisyon Tipi</label>
+                        <select id="sim_position_type" class="form-select">
+                            <option value="LONG">Long</option>
+                            <option value="SHORT">Short</option>
+                        </select>
+                    </div>
+                    <div class="form-group mb-3">
+                        <label>Pozisyon Büyüklüğü ($)</label>
+                        <input type="number" id="sim_position_size" class="form-control" value="1000">
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="form-group mb-3">
+                        <label>Stop Loss ($)</label>
+                        <input type="number" id="sim_stop_loss" class="form-control">
+                    </div>
+                    <div class="form-group mb-3">
+                        <label>Take Profit ($)</label>
+                        <input type="number" id="sim_take_profit" class="form-control">
+                    </div>
+                </div>
+            </div>
+            <button class="btn btn-primary w-100" onclick="simulatePosition()">Simülasyon Başlat</button>
+            <div id="simulation_results" class="mt-3"></div>
+        </div>
+    </div>
+
+    <!-- Geçmiş Performans Analizi Kartı -->
+    <div class="card">
+        <div class="card-body">
+            <h5 class="card-title">Geçmiş Performans Analizi</h5>
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="performance-metrics"></div>
+                </div>
+                <div class="col-md-6">
+                    <canvas id="monthlyReturnsChart"></canvas>
+                </div>
+            </div>
+            <div id="historical_performance_results"></div>
+        </div>
+    </div>
+
+    <!-- Portföy Optimizasyonu Kartı -->
+    <div class="card">
+        <div class="card-body">
+            <h5 class="card-title">Portföy Optimizasyonu</h5>
+            <div class="row mb-3">
+                <div class="col-md-4">
+                    <label>Sermaye ($)</label>
+                    <input type="number" id="portfolio_capital" class="form-control" value="10000">
+                </div>
+                <div class="col-md-4">
+                    <label>Risk Toleransı</label>
+                    <select id="risk_tolerance" class="form-select">
+                        <option value="conservative">Konservatif</option>
+                        <option value="moderate" selected>Orta</option>
+                        <option value="aggressive">Agresif</option>
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label>&nbsp;</label>
+                    <button class="btn btn-primary w-100" onclick="optimizePortfolio()">Optimize Et</button>
+                </div>
+            </div>
+            <div id="portfolio_optimization_results"></div>
+        </div>
+    </div>
+
+    <!-- Risk/Ödül Hesaplayıcı Kartı -->
+    <div class="card">
+        <div class="card-body">
+            <h5 class="card-title">Risk/Ödül Hesaplayıcı</h5>
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="form-group mb-3">
+                        <label>Giriş Fiyatı ($)</label>
+                        <input type="number" id="calc_entry_price" class="form-control">
+                    </div>
+                    <div class="form-group mb-3">
+                        <label>Stop Loss ($)</label>
+                        <input type="number" id="calc_stop_loss" class="form-control">
+                    </div>
+                    <div class="form-group mb-3">
+                        <label>Take Profit ($)</label>
+                        <input type="number" id="calc_take_profit" class="form-control">
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="risk-reward-display">
+                        <div class="risk-meter-container">
+                            <div class="risk-meter">
+                                <div class="risk-indicator"></div>
+                            </div>
+                            <div class="risk-labels">
+                                <span>Risk</span>
+                                <span>Ödül</span>
+                            </div>
+                        </div>
+                        <div class="metrics mt-3">
+                            <div id="risk_reward_ratio"></div>
+                            <div id="potential_profit"></div>
+                            <div id="potential_loss"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
 </body>
 </html> 
