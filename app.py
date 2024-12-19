@@ -1,4 +1,4 @@
-from flask import Flask, render_template, jsonify
+from flask import Flask, render_template, jsonify, Response
 import ccxt
 import pandas as pd
 import numpy as np
@@ -15,6 +15,8 @@ from finta import TA  # Ek teknik analiz göstergeleri için
 import mplfinance as mpf  # Grafik analizi için
 from scipy import stats  # İstatistiksel analiz için
 import warnings
+import time
+import json
 warnings.filterwarnings('ignore')
 
 app = Flask(__name__)
@@ -348,6 +350,267 @@ class AdvancedCryptoAnalyzer:
                 'error': str(e)
             }
 
+    def get_realtime_data(self, symbol, interval='1m', limit=100):
+        try:
+            ohlcv = self.exchange.fetch_ohlcv(
+                symbol=f"{symbol}/USDT",
+                timeframe=interval,
+                limit=limit
+            )
+            return [{
+                'time': candle[0],
+                'open': candle[1],
+                'high': candle[2],
+                'low': candle[3],
+                'close': candle[4],
+                'volume': candle[5]
+            } for candle in ohlcv]
+        except Exception as e:
+            print(f"Realtime veri hatası: {str(e)}")
+            return []
+
+    def get_technical_indicators(self, symbol, interval='1m'):
+        try:
+            data = self.get_realtime_data(symbol, interval)
+            if not data:
+                return []
+            
+            df = pd.DataFrame(data)
+            df['MA7'] = df['close'].rolling(window=7).mean()
+            df['MA25'] = df['close'].rolling(window=25).mean()
+            df['MA99'] = df['close'].rolling(window=99).mean()
+            
+            # RSI hesaplama
+            delta = df['close'].diff()
+            gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+            loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+            rs = gain / loss
+            df['RSI'] = 100 - (100 / (1 + rs))
+            
+            return df.dropna().to_dict('records')
+        except Exception as e:
+            print(f"Teknik gösterge hatası: {str(e)}")
+            return []
+
+    def analyze_long_short_positions(self, df, sentiment_data=None):
+        try:
+            last_row = df.iloc[-1]
+            last_price = last_row['close']
+            
+            # Risk ve ödül hesaplama faktörleri
+            risk_factors = {
+                'trend': 0,
+                'momentum': 0,
+                'volatility': 0,
+                'sentiment': 0,
+                'technical': 0
+            }
+            
+            # Trend analizi
+            if last_row['EMA_20'] > last_row['EMA_50']:
+                risk_factors['trend'] += 1
+            else:
+                risk_factors['trend'] -= 1
+                
+            if last_row['SMA_200'] < last_price:
+                risk_factors['trend'] += 0.5
+            else:
+                risk_factors['trend'] -= 0.5
+                
+            # Momentum analizi
+            if last_row['RSI'] < 30:
+                risk_factors['momentum'] += 1.5  # Aşırı satım
+            elif last_row['RSI'] > 70:
+                risk_factors['momentum'] -= 1.5  # Aşırı alım
+                
+            if last_row['MACD'] > last_row['MACD_Signal']:
+                risk_factors['momentum'] += 1
+            else:
+                risk_factors['momentum'] -= 1
+                
+            # Volatilite analizi
+            volatility = df['close'].pct_change().std() * np.sqrt(365)
+            if volatility > 0.03:  # Yüksek volatilite
+                risk_factors['volatility'] -= 0.5
+            else:
+                risk_factors['volatility'] += 0.5
+                
+            # Sentiment analizi
+            if sentiment_data and 'sentiment_score' in sentiment_data:
+                risk_factors['sentiment'] = sentiment_data['sentiment_score']
+                
+            # Teknik gösterge analizi
+            if last_row['close'] > last_row['BB_upper']:
+                risk_factors['technical'] -= 1
+            elif last_row['close'] < last_row['BB_lower']:
+                risk_factors['technical'] += 1
+                
+            # Toplam skor hesaplama
+            total_score = sum(risk_factors.values())
+            
+            # Long/Short pozisyon önerileri
+            if total_score > 1.5:
+                position = "LONG"
+                confidence = min(abs(total_score) / 5 * 100, 100)
+                risk_ratio = 1.5
+                reward_ratio = 3.0
+            elif total_score < -1.5:
+                position = "SHORT"
+                confidence = min(abs(total_score) / 5 * 100, 100)
+                risk_ratio = 1.5
+                reward_ratio = 2.5
+            else:
+                position = "NÖTR"
+                confidence = 50
+                risk_ratio = 2
+                reward_ratio = 2
+                
+            # Stop loss ve take profit seviyeleri
+            atr = last_row['ATR']
+            if position == "LONG":
+                stop_loss = last_price - (atr * risk_ratio)
+                take_profit = last_price + (atr * reward_ratio)
+            elif position == "SHORT":
+                stop_loss = last_price + (atr * risk_ratio)
+                take_profit = last_price - (atr * reward_ratio)
+            else:
+                stop_loss = take_profit = last_price
+                
+            return {
+                'position': position,
+                'confidence': confidence,
+                'risk_reward_ratio': reward_ratio / risk_ratio,
+                'stop_loss': stop_loss,
+                'take_profit': take_profit,
+                'potential_profit': abs(take_profit - last_price) / last_price * 100,
+                'potential_loss': abs(stop_loss - last_price) / last_price * 100,
+                'risk_factors': risk_factors,
+                'suggested_leverage': min(5, 20 / (volatility * 100)),  # Volatiliteye göre kaldıraç önerisi
+                'position_size': {
+                    'conservative': 0.1,  # Portföyün %10'u
+                    'moderate': 0.2,      # Portföyün %20'si
+                    'aggressive': 0.3     # Portföyün %30'u
+                }
+            }
+        except Exception as e:
+            print(f"Long/Short analiz hatası: {str(e)}")
+            return None
+
+    def calculate_position_management(self, capital, risk_per_trade, entry_price, stop_loss, take_profit):
+        try:
+            # Pozisyon büyüklüğü hesaplama
+            risk_amount = capital * (risk_per_trade / 100)
+            stop_loss_pct = abs(entry_price - stop_loss) / entry_price
+            position_size = risk_amount / stop_loss_pct
+            
+            # Kademeli kar alma seviyeleri
+            take_profit_levels = [
+                entry_price + (entry_price - stop_loss) * multiplier 
+                for multiplier in [1.0, 1.5, 2.0]
+            ]
+            
+            # Trailing stop seviyeleri
+            trailing_stops = [
+                entry_price + (take_profit - entry_price) * multiplier 
+                for multiplier in [0.3, 0.5, 0.7]
+            ]
+            
+            return {
+                'position_size': position_size,
+                'max_position_size': min(position_size, capital * 0.2),  # Maksimum %20 risk
+                'take_profit_levels': take_profit_levels,
+                'trailing_stops': trailing_stops,
+                'suggested_exits': {
+                    'conservative': {
+                        'tp1_size': 0.5,  # Pozisyonun %50'si
+                        'tp2_size': 0.3,  # Pozisyonun %30'u
+                        'tp3_size': 0.2   # Pozisyonun %20'si
+                    },
+                    'aggressive': {
+                        'tp1_size': 0.3,
+                        'tp2_size': 0.3,
+                        'tp3_size': 0.4
+                    }
+                }
+            }
+        except Exception as e:
+            print(f"Pozisyon yönetimi hatası: {str(e)}")
+            return None
+
+    def calculate_portfolio_risk(self, positions, correlations=None):
+        try:
+            total_risk = 0
+            total_exposure = 0
+            risk_contributions = {}
+            
+            for symbol, position in positions.items():
+                # Volatilite hesaplama
+                volatility = position['df']['close'].pct_change().std() * np.sqrt(365)
+                position_value = position['size'] * position['entry_price']
+                position_risk = position_value * volatility
+                
+                total_risk += position_risk
+                total_exposure += position_value
+                risk_contributions[symbol] = position_risk
+            
+            # Risk metrikler
+            return {
+                'total_portfolio_risk': total_risk,
+                'risk_contributions': risk_contributions,
+                'risk_concentration': {
+                    symbol: (risk / total_risk) * 100 
+                    for symbol, risk in risk_contributions.items()
+                },
+                'portfolio_diversification_score': 1 - (max(risk_contributions.values()) / total_risk),
+                'suggested_adjustments': {
+                    symbol: ('AZALT' if (risk / total_risk) > 0.2 else 'ARTIR')
+                    for symbol, risk in risk_contributions.items()
+                }
+            }
+        except Exception as e:
+            print(f"Portföy risk hesaplama hatası: {str(e)}")
+            return None
+
+    def multi_timeframe_analysis(self, symbol, timeframes=['1m', '5m', '15m', '1h', '4h', '1d']):
+        try:
+            analyses = {}
+            for tf in timeframes:
+                df = self.get_market_data(f"{symbol}/USDT", timeframe=tf)
+                if not df.empty:
+                    df = self.calculate_advanced_indicators(df)
+                    
+                    # Her zaman dilimi için trend analizi
+                    last_row = df.iloc[-1]
+                    trend = {
+                        'ema_trend': 'YÜKSELEN' if last_row['EMA_20'] > last_row['EMA_50'] else 'DÜŞEN',
+                        'macd_trend': 'YÜKSELEN' if last_row['MACD'] > last_row['MACD_Signal'] else 'DÜŞEN',
+                        'rsi_state': 'AŞIRI ALIM' if last_row['RSI'] > 70 else 'AŞIRI SATIM' if last_row['RSI'] < 30 else 'NÖTR'
+                    }
+                    
+                    analyses[tf] = trend
+            
+            # Trend uyumu analizi
+            trend_agreement = {
+                'bullish_count': sum(1 for tf in analyses.values() if tf['ema_trend'] == 'YÜKSELEN'),
+                'bearish_count': sum(1 for tf in analyses.values() if tf['ema_trend'] == 'DÜŞEN')
+            }
+            
+            trend_strength = (max(trend_agreement['bullish_count'], trend_agreement['bearish_count']) / len(timeframes)) * 100
+            
+            return {
+                'timeframe_analyses': analyses,
+                'trend_agreement': trend_agreement,
+                'trend_strength': trend_strength,
+                'overall_trend': 'GÜÇLÜ YÜKSELEN' if trend_strength > 80 and trend_agreement['bullish_count'] > trend_agreement['bearish_count']
+                               else 'GÜÇLÜ DÜŞEN' if trend_strength > 80 and trend_agreement['bullish_count'] < trend_agreement['bearish_count']
+                               else 'ZAYIF YÜKSELEN' if trend_agreement['bullish_count'] > trend_agreement['bearish_count']
+                               else 'ZAYIF DÜŞEN' if trend_agreement['bullish_count'] < trend_agreement['bearish_count']
+                               else 'KARARSIZ'
+            }
+        except Exception as e:
+            print(f"Çoklu zaman dilimi analiz hatası: {str(e)}")
+            return None
+
 @app.route('/')
 def home():
     return render_template('index.html')
@@ -385,6 +648,9 @@ def analyze(symbol):
         # Trading sinyalleri
         signals = analyzer.generate_trading_signals(df, sentiment_data, prediction_data, levels, market_structure)
         
+        # Long/Short analizi
+        long_short_analysis = analyzer.analyze_long_short_positions(df, sentiment_data)
+        
         # Son fiyat ve değişim hesaplama
         last_price = float(df['close'].iloc[-1])
         price_change = float(((df['close'].iloc[-1] - df['close'].iloc[-2]) / df['close'].iloc[-2] * 100))
@@ -398,7 +664,8 @@ def analyze(symbol):
             'sentiment_analysis': sentiment_data,
             'price_prediction': prediction_data,
             'support_resistance': levels,
-            'risk_analysis': signals.get('risk_analysis', {})
+            'risk_analysis': signals.get('risk_analysis', {}),
+            'long_short_analysis': long_short_analysis
         })
         
     except Exception as e:
@@ -407,6 +674,79 @@ def analyze(symbol):
             'error': 'Analiz hatası',
             'message': str(e)
         }), 500
+
+@app.route('/realtime-data/<symbol>')
+def get_realtime_data(symbol):
+    def generate():
+        analyzer = AdvancedCryptoAnalyzer()
+        while True:
+            data = analyzer.get_realtime_data(symbol)
+            yield f"data: {json.dumps(data)}\n\n"
+            time.sleep(5)  # 5 saniyede bir güncelle
+
+    return Response(generate(), mimetype='text/event-stream')
+
+@app.route('/technical-data/<symbol>/<interval>')
+def get_technical_data(symbol, interval):
+    analyzer = AdvancedCryptoAnalyzer()
+    data = analyzer.get_technical_indicators(symbol, interval)
+    return jsonify(data)
+
+@app.route('/position-management/<symbol>')
+def get_position_management(symbol):
+    try:
+        analyzer = AdvancedCryptoAnalyzer()
+        df = analyzer.get_market_data(f"{symbol}/USDT")
+        if df.empty:
+            return jsonify({'error': 'Veri alınamadı'}), 400
+            
+        last_price = float(df['close'].iloc[-1])
+        analysis = analyzer.analyze_long_short_positions(df)
+        
+        if not analysis:
+            return jsonify({'error': 'Analiz yapılamadı'}), 400
+            
+        position_management = analyzer.calculate_position_management(
+            capital=10000,  # Varsayılan değer
+            risk_per_trade=1,  # %1 risk
+            entry_price=last_price,
+            stop_loss=analysis['stop_loss'],
+            take_profit=analysis['take_profit']
+        )
+        
+        return jsonify(position_management)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/portfolio-analysis', methods=['POST'])
+def analyze_portfolio():
+    try:
+        data = request.json
+        analyzer = AdvancedCryptoAnalyzer()
+        positions = {}
+        
+        for position in data['positions']:
+            df = analyzer.get_market_data(f"{position['symbol']}/USDT")
+            if not df.empty:
+                positions[position['symbol']] = {
+                    'df': df,
+                    'size': position['size'],
+                    'entry_price': position['entry_price']
+                }
+        
+        risk_analysis = analyzer.calculate_portfolio_risk(positions)
+        return jsonify(risk_analysis)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/multi-timeframe/<symbol>')
+def get_multi_timeframe_analysis(symbol):
+    try:
+        analyzer = AdvancedCryptoAnalyzer()
+        analysis = analyzer.multi_timeframe_analysis(symbol)
+        return jsonify(analysis)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
     app.run(debug=True)
